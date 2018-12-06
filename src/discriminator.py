@@ -5,10 +5,15 @@ import numpy as np
 import os
 import cv2
 
-def get_dataset(path, batchsize):
+def get_train_test_dataset(path, batchsize, mini, split_ratio):
     """
     Creates a dataset of image paths and labels
     CPU-driven. GPU should only be used for training the model.
+    @Arguments:
+        path: path to directory
+        batchsize: size of batch
+        mini: minimum number of images per class. less than will be filtered out
+        split_ratio: train-to-test size
     """
     with tf.device('/cpu:0'):
         base_path = os.path.expanduser(path)
@@ -17,21 +22,38 @@ def get_dataset(path, batchsize):
         classes.sort()
         imagepaths = []
         labels = []
+
+        # Build the images and labels lists. Skip any class with less than
+        # `mini` number of faces
         for i in range(len(classes)):
             class_name = classes[i]
             faces = os.path.join(base_path, class_name)
-            image_paths = _get_image_paths(faces)
-            imagepaths.append(image_paths)
-            labels.append(classes[i])
+            n_faces = len(os.listdir(faces))
+            if n_faces >= mini:
+                image_paths = _get_image_paths(faces)
+                imagepaths.append(image_paths)
+                labels.append(classes[i])
 
-        dataset = tf.data.Dataset.from_tensor_slices((imagepaths, labels))
-        dataset.shuffle(len(imagepaths))
-        dataset.map(resize_images, num_parallel_calls=4)
-        dataset.batch(batchsize)
-        dataset = dataset.prefetch(1)
-        return dataset
+        imgpath_sz, classes_sz = len(imagepaths), len(classes)
+        imp, cla = imagepaths[:int(split_ratio*imgpath_sz)], classes[:int(split_ratio*classes_sz)]
+        test_imp, test_cla = imagepaths[int(split_ratio*imgpath_sz):], classes[int(split_ratio*classes_sz):]
+        train_dataset = tf.data.Dataset.from_tensor_slices((imp, cla))
+        test_dataset = tf.data.Dataset.from_tensor_slice((test_imp, test_cla))
+        train_dataset.shuffle(len(imp))
+        test_dataset.shuffle(len(test_imp))
+        train_dataset.map(_resize_images, num_parallel_calls=4)
+        test_dataset.map(_resize_images, num_parallel_calls=4)
+        train_dataset.batch(batchsize)
+        test_dataset.batch(batchsize)
+        train_dataset = dataset.prefetch(1)
+        test_dataset = dataset.prefetch(1)
+        return train_dataset, test_dataset
 
-def resize_images(path, label):
+def _resize_images(path, label):
+    """
+    To be mapped to dataset.
+    Resizes image specified by path.
+    """
     notimg = tf.read_file(path)
     img = tf.image.decode_jpeg(notimg, channels=3)
     img = tf.image.convert_image_dtype(img, dtype=tf.float32)
@@ -50,25 +72,41 @@ def _get_image_paths(facedir):
     return image_paths
 
 
-def filter_dataset(dataset, min_num_imgs_per_class):
+def filter_dataset(dataset, min_num_img_per_class):
     """
     Get rid of classes with a size < min
     """
 
 def train(batch):
-    with tf.Graph().as_default():
+    with tf.Session() as sess:
         global_step = tf.Variable(0, trainable=False)
+
         learning_rate_placeholder = tf.placeholder(tf.float32, name='learning_rate')
-        batch_size_placeholder = tf.placeholder(tf.bool, name='phase_train')
-        image_paths_placeholder = tf.placeholder(tf.string, shape=(None, 3), name='image_paths')
-        labels_placeholder = tf.placeholder(tf.int64, shape=(None, 3), name='labels')
+        images_placeholder = tf.get_default_graph().get_tensor_by_name("input")
+        phase_train = tf.get_default_graph().get_tensor_by_name("phase_train")
+        embeddings_layers = tf.get_default_graph().get_tensor_by_name("embeddings")
 
-        embeddings = tf.get_default_graph().get_tensor_by_name("embeddings")
+        embeddings, labels = _get_embeddings(embeddings_layer, images_placeholder, lab)
 
-    # Feedforward
-    for i, fname in enumerate(batch):
-        img = load_img(fname)
-        feed_dict
+
+def _get_embeddings(embedding_layer, images, labels, images_placeholder, phase_train_placeholder, sess):
+    emb_array = None
+    label_array = None
+    try:
+        i = 0
+        while True:
+            batch_images, batch_labels = sess.run([images, labels])
+            logger.info('Processing iteration {} batch of size: {}'.format(i, len(batch_labels)))
+            emb = sess.run(embedding_layer,
+                           feed_dict={images_placeholder: batch_images, phase_train_placeholder: False})
+
+            emb_array = np.concatenate([emb_array, emb]) if emb_array is not None else emb
+            label_array = np.concatenate([label_array, batch_labels]) if label_array is not None else batch_labels
+            i += 1
+
+    except tf.errors.OutOfRangeError:
+        pass
+    return emb_array, label_array
 
 def get_distance_matrix(batch):
     batch_squared = tf.matmul(batch, tf.transpose(batch))
