@@ -1,28 +1,42 @@
 import tensorflow as tf
-from tensorflow.contrib.losses.metric_learning import triplet_semihard_loss
+from tensorflow.contrib.losses import metric_learning
+from tensorflow.python.framework import ops
 import numpy as np
 import os
 import cv2
 
-class ImageSet():
-    """ Stores class name and image paths for class"""
-    def __init__(self, class_name, image_paths):
-        self.name = class_name
-        self.image_paths = image_paths
+def get_dataset(path, batchsize):
+    """
+    Creates a dataset of image paths and labels
+    CPU-driven. GPU should only be used for training the model.
+    """
+    with tf.device('/cpu:0'):
+        base_path = os.path.expanduser(path)
+        classes = [path for path in os.listdir(path) \
+                        if os.path.isdir(os.path.join(base_path, path))]
+        classes.sort()
+        imagepaths = []
+        labels = []
+        for i in range(len(classes)):
+            class_name = classes[i]
+            faces = os.path.join(base_path, class_name)
+            image_paths = _get_image_paths(faces)
+            imagepaths.append(image_paths)
+            labels.append(classes[i])
 
-def get_dataset(path):
-    dataset = [] # A dataset of ImageSets
-    base_path = os.path.expanduser(path)
-    classes = [path for path in os.listdir(path) \
-                    if os.path.isdir(os.path.join(base_path, path))]
-    classes.sort()
-    for i in range(len(classes)):
-        class_name = classes[i]
-        faces = os.path.join(base_path, class_name)
-        image_paths = _get_image_paths(faces)
-        dataset.append(ImageSet(class_name, image_paths))
+        dataset = tf.data.Dataset.from_tensor_slices((imagepaths, labels))
+        dataset.shuffle(len(imagepaths))
+        dataset.map(resize_images, num_parallel_calls=4)
+        dataset.batch(batchsize)
+        dataset = dataset.prefetch(1)
+        return dataset
 
-    return dataset
+def resize_images(path, label):
+    notimg = tf.read_file(path)
+    img = tf.image.decode_jpeg(notimg, channels=3)
+    img = tf.image.convert_image_dtype(img, dtype=tf.float32)
+    img = tf.image.resize_images(img, [64,64])
+    return img, label
 
 def _get_image_paths(facedir):
     """
@@ -32,15 +46,29 @@ def _get_image_paths(facedir):
     image_paths = []
     if os.path.isdir(facedir):
         imgs = os.listdir(facedir)
-        image_paths = [os.path.join(facedir, img) for img im imgs]
+        image_paths = [os.path.join(facedir, img) for img in imgs]
     return image_paths
 
-def get_batch(images, batch_size, curr_batch_index):
-#
 
-# Constructs a list of image paths
-def get_image_paths(image_dir):
-#
+def filter_dataset(dataset, min_num_imgs_per_class):
+    """
+    Get rid of classes with a size < min
+    """
+
+def train(batch):
+    with tf.Graph().as_default():
+        global_step = tf.Variable(0, trainable=False)
+        learning_rate_placeholder = tf.placeholder(tf.float32, name='learning_rate')
+        batch_size_placeholder = tf.placeholder(tf.bool, name='phase_train')
+        image_paths_placeholder = tf.placeholder(tf.string, shape=(None, 3), name='image_paths')
+        labels_placeholder = tf.placeholder(tf.int64, shape=(None, 3), name='labels')
+
+        embeddings = tf.get_default_graph().get_tensor_by_name("embeddings")
+
+    # Feedforward
+    for i, fname in enumerate(batch):
+        img = load_img(fname)
+        feed_dict
 
 def get_distance_matrix(batch):
     batch_squared = tf.matmul(batch, tf.transpose(batch))
@@ -74,13 +102,13 @@ def triplet_loss(anchor, positive, negative, alpha):
             alpha: margin enforced between positive and negative pairs
 
     """
-	with tf.variable_scope('triplet_loss'):
-            pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
-            neg_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, negative)), 1)
-            dist_diff = tf.add(tf.subtract(pos_dist, neg_dist), alpha)
-            loss = tf.reduce_mean(tf.maximum(dist_diff, 0.0), 0)
+    with tf.variable_scope('triplet_loss'):
+        pos_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, positive)), 1)
+        neg_dist = tf.reduce_sum(tf.square(tf.subtract(anchor, negative)), 1)
+        dist_diff = tf.add(tf.subtract(pos_dist, neg_dist), alpha)
+        loss = tf.reduce_mean(tf.maximum(dist_diff, 0.0), 0)
 
-            return loss
+        return loss
 
 def batch_compute_embedding(batch):
     """
@@ -103,24 +131,23 @@ def _get_hard_triplet_batch(anchor, minibatch, alpha):
     distance_mat = _get_distance_matrix()
 
 def _get_seha_triplet_batch(anchor, minibatch):
+    """
+
+    """
 
 def get_triplet_batch_online(mode, minibatch, size):
-"""
-Online triple selection as described by the FaceNet Paper:
+    """
+    Online triple selection as described by the FaceNet Paper:
 
-    Easy triplets: triplets with a loss of 0 (d(ap)+alpha < d(an))
-    Hard triplets: triplets with a d(an) < d(ap)
-    Semi-hard triplets: triplets where the negative is not closer to the anchor
-        than the posiive, but still have non-zero loss. d(ap) < d(an) < d(ap) + alpha
+        Easy triplets: triplets with a loss of 0 (d(ap)+alpha < d(an))
+        Hard triplets: triplets with a d(an) < d(ap)
+        Semi-hard triplets: triplets where the negative is not closer to the anchor
+            than the posiive, but still have non-zero loss. d(ap) < d(an) < d(ap) + alpha
 
-    Compute argmin and argmaxes within given minibatch
+        Compute argmin and argmaxes within given minibatch
 
-"""
+    """
     if mode is "hard":
         _get_easy_triplet_batch()
     if mode is "semihard":
         _get_seha_triplet_batch()
-
-
-
-
