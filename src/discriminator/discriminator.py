@@ -1,9 +1,7 @@
 import tensorflow as tf
-from tensorflow.contrib.losses import metric_learning
-from tensorflow.python.framework import ops
 import numpy as np
 import os
-import cv2
+
 
 def get_train_test_dataset(path, batchsize, mini, split_ratio):
     """
@@ -17,8 +15,7 @@ def get_train_test_dataset(path, batchsize, mini, split_ratio):
     """
     with tf.device('/cpu:0'):
         base_path = os.path.expanduser(path)
-        classes = [path for path in os.listdir(path) \
-                        if os.path.isdir(os.path.join(base_path, path))]
+        classes = [path for path in os.listdir(path) if os.path.isdir(os.path.join(base_path, path))]
         classes.sort()
         imagepaths = []
         labels = []
@@ -45,9 +42,10 @@ def get_train_test_dataset(path, batchsize, mini, split_ratio):
         test_dataset.map(_resize_images, num_parallel_calls=4)
         train_dataset.batch(batchsize)
         test_dataset.batch(batchsize)
-        train_dataset = dataset.prefetch(1)
-        test_dataset = dataset.prefetch(1)
+        train_dataset = train_dataset.prefetch(1)
+        test_dataset = test_dataset.prefetch(1)
         return train_dataset, test_dataset
+
 
 def _resize_images(path, label):
     """
@@ -57,8 +55,9 @@ def _resize_images(path, label):
     notimg = tf.read_file(path)
     img = tf.image.decode_jpeg(notimg, channels=3)
     img = tf.image.convert_image_dtype(img, dtype=tf.float32)
-    img = tf.image.resize_images(img, [64,64])
+    img = tf.image.resize_images(img, [64, 64])
     return img, label
+
 
 def _get_image_paths(facedir):
     """
@@ -77,26 +76,28 @@ def filter_dataset(dataset, min_num_img_per_class):
     Get rid of classes with a size < min
     """
 
+"""
 def train(batch):
     with tf.Session() as sess:
         global_step = tf.Variable(0, trainable=False)
 
         learning_rate_placeholder = tf.placeholder(tf.float32, name='learning_rate')
         images_placeholder = tf.get_default_graph().get_tensor_by_name("input")
+        labels_placeholder = tf.get_default_graph().get_tensoy_by_name("")
         phase_train = tf.get_default_graph().get_tensor_by_name("phase_train")
         embeddings_layers = tf.get_default_graph().get_tensor_by_name("embeddings")
 
-        embeddings, labels = _get_embeddings(embeddings_layer, images_placeholder, lab)
+        embeddings, labels = _get_embeddings(embeddings_layers, images_placeholder, images, labels_placeholder, phase_train, sess)
+"""
 
-
-def _get_embeddings(embedding_layer, images, labels, images_placeholder, phase_train_placeholder, sess):
+def _get_embeddings(embedding_layer, images_placeholder, images, labels,  phase_train_placeholder, sess):
     emb_array = None
     label_array = None
     try:
         i = 0
         while True:
             batch_images, batch_labels = sess.run([images, labels])
-            logger.info('Processing iteration {} batch of size: {}'.format(i, len(batch_labels)))
+            # logger.info('Processing iteration {} batch of size: {}'.format(i, len(batch_labels)))
             emb = sess.run(embedding_layer,
                            feed_dict={images_placeholder: batch_images, phase_train_placeholder: False})
 
@@ -108,14 +109,16 @@ def _get_embeddings(embedding_layer, images, labels, images_placeholder, phase_t
         pass
     return emb_array, label_array
 
+
 def get_distance_matrix(batch):
     batch_squared = tf.matmul(batch, tf.transpose(batch))
     squares = tf.diag_part(batch_squared)
-    a2 = tf.expand_dim(squares, 0)
-    b2 = tf.expand_dim(squares, 1)
+    a2 = tf.expand_dims(squares, 0)
+    b2 = tf.expand_dims(squares, 1)
     distances = a2 - 2 * batch_squared - b2
 
     return distances
+
 
 """
 Triplet Loss function as described by the FaceNet Paper
@@ -131,6 +134,8 @@ Triplet Loss function as described by the FaceNet Paper
     (positive) of the same person than it is to any image x_ni
     (negative) of any other person.
 """
+
+
 def triplet_loss(anchor, positive, negative, alpha):
     """
         @Arguments:
@@ -148,6 +153,7 @@ def triplet_loss(anchor, positive, negative, alpha):
 
         return loss
 
+
 def batch_compute_embedding(batch):
     """
     Compute embedding from image to feature space Rd
@@ -155,26 +161,15 @@ def batch_compute_embedding(batch):
     and all faces of different ids is large
     """
 
-"""
-TERMINOLOGY:
-    hard positive: argmax_xpi [f(x_ai) - f(x_pi)]2,2
-    hard negative: argmin_xni [f(x_ai) - f(x_ni)]2,2
-    semihard negative:
-        x_ni s.t. [f(x_ai) - f(x_pi)]2,2 < [f(x_ai) - f(x_ni)]2,2
-"""
-def _get_hard_triplet_batch(anchor, minibatch, alpha):
-    """
-    Compute hard positive/negatives from minibatch
-    """
-    distance_mat = _get_distance_matrix()
 
-def _get_seha_triplet_batch(anchor, minibatch):
-    """
-
-    """
 
 def get_triplet_batch_online(mode, minibatch, size):
     """
+    TERMINOLOGY:
+        hard positive: argmax_xpi [f(x_ai) - f(x_pi)]2,2
+        hard negative: argmin_xni [f(x_ai) - f(x_ni)]2,2
+        semihard negative:
+            x_ni s.t. [f(x_ai) - f(x_pi)]2,2 < [f(x_ai) - f(x_ni)]2,2
     Online triple selection as described by the FaceNet Paper:
 
         Easy triplets: triplets with a loss of 0 (d(ap)+alpha < d(an))
@@ -183,9 +178,4 @@ def get_triplet_batch_online(mode, minibatch, size):
             than the posiive, but still have non-zero loss. d(ap) < d(an) < d(ap) + alpha
 
         Compute argmin and argmaxes within given minibatch
-
     """
-    if mode is "hard":
-        _get_easy_triplet_batch()
-    if mode is "semihard":
-        _get_seha_triplet_batch()
