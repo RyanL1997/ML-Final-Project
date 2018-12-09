@@ -1,7 +1,5 @@
 import discriminator.discriminator as dsc
 import tensorflow as tf
-import PIL
-
 
 def read_image_from_path(path):
     notimg = tf.read_file(path)
@@ -25,7 +23,7 @@ with tf.Session() as sesh:
     writer = tf.train.FileWriter('./logs')
     writer.add_summary(summary)
     writer.close()
-    """
+   """
     image_input_layer = tf.get_default_graph().get_tensor_by_name("input")
     embeddings_layer = tf.get_default_graph().get_tensor_by_name("embeddings")
     phase_train = tf.get_default_graph().get_tensor_by_name("phase_train")
